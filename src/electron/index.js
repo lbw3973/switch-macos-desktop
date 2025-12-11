@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, nativeImage } = require("electron");
+const { app, BrowserWindow, Tray, Menu } = require("electron");
 const path = require("path");
 const { uIOhook } = require("uiohook-napi");
 const run = require("run-applescript");
@@ -9,8 +9,8 @@ let window = null;
 
 const createWindow = () => {
   window = new BrowserWindow({
-    width: 250,
-    height: 300,
+    width: 0,
+    height: 0,
     show: false, // 처음엔 숨김
     frame: false, // 테두리 없음
     resizable: false,
@@ -20,6 +20,7 @@ const createWindow = () => {
       nodeIntegration: true,
       contextIsolation: false,
     },
+    vibrancy:"sidebar",
   });
 
   window.loadFile("index.html");
@@ -29,29 +30,15 @@ const createWindow = () => {
 }
 
 const createTray = () => {
-  const iconPath = path.join(__dirname, "Icon.png"); // 최소 16~32px 짜리
+  const iconPath = path.join(__dirname, "../../Icon.png"); // 최소 16~32px 짜리
   tray = new Tray(iconPath);
 
+  const trayMenu = Menu.buildFromTemplate([
+    { label: "Quit", click: () => app.quit(), accelerator:"Cmd+Q" }
+  ]);
+
   tray.setToolTip("Switch Desktop");
-  tray.on("click", toggleWindow);
-}
-
-function toggleWindow() {
-  const windowBounds = window.getBounds();
-  const trayBounds = tray.getBounds();
-
-  // 메뉴바 아래에 표시되는 위치 계산
-  const x = Math.round(trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2);
-  const y = Math.round(trayBounds.y + trayBounds.height);
-
-  window.setPosition(x, y, false);
-
-  if (window.isVisible()) {
-    window.hide();
-  } else {
-    window.show();
-    window.focus();
-  }
+  tray.setContextMenu(trayMenu);
 }
 
 const moveDesktopRight = async () => {
@@ -79,38 +66,36 @@ const MouseClickListener = () => {
     const btn = e.button;
     const now = Date.now();
 
-    // 첫 번째 버튼
+    if (pressedButtons.size > 0 && now - firstPressTime > WINDOW) {
+      pressedButtons.clear();
+    }
+
     if (pressedButtons.size === 0) {
       pressedButtons.add(btn);
       firstPressTime = now;
       return;
     }
 
-    // 두 번째 버튼
-    if (now - firstPressTime <= WINDOW) {
-      pressedButtons.add(btn);
+    pressedButtons.add(btn);
 
-      if (pressedButtons.has(1) && pressedButtons.has(5)) {
-        console.log("Right");
-        await moveDesktopRight();
-        return;
-      }
-
-      if (pressedButtons.has(1) && pressedButtons.has(4)) {
-        console.log("Left");
-        await moveDesktopLeft();
-        return;
-      }
+    if (pressedButtons.has(1) && pressedButtons.has(5)) {
+      await moveDesktopRight();
+      pressedButtons.clear(); // 조건 충족 후 초기화
+      return;
     }
 
-    // 이후 상태 초기화
-    pressedButtons.clear();
+    if (pressedButtons.has(1) && pressedButtons.has(4)) {
+      await moveDesktopLeft();
+      pressedButtons.clear(); // 조건 충족 후 초기화
+      return;
+    }
   });
 
   uIOhook.start();
 }
 
 app.whenReady().then(() => {
+  app.dock.hide();
   createWindow();
   createTray();
   MouseClickListener();
